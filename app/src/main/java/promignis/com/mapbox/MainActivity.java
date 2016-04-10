@@ -35,6 +35,14 @@ public class MainActivity extends AppCompatActivity {
     private Location currentBestLocation;
     private Socket mSocket;
 
+    {
+        try {
+            mSocket = IO.socket(URLStore.BASE_URL);
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,16 +83,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupSocketIO() {
-        try {
-            mSocket = IO.socket(URLStore.BASE_URL);
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        }
-        setupSocketEvents();
-    }
-
-    private void setupSocketEvents() {
-        mSocket.on(Socket.EVENT_CONNECT, Connected);
+        mSocket.on("connection", Connected);
+        mSocket.connect();
     }
 
     private Emitter.Listener Connected = new Emitter.Listener() {
