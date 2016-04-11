@@ -21,11 +21,16 @@ import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 
 import io.socket.client.IO;
 import io.socket.client.Socket;
 import io.socket.emitter.Emitter;
+import promignis.com.mapbox.Models.Person;
 import promignis.com.mapbox.Utils.URLStore;
 
 public class MainActivity extends AppCompatActivity {
@@ -34,6 +39,8 @@ public class MainActivity extends AppCompatActivity {
     private MapView mapView;
     private Location currentBestLocation;
     private Socket mSocket;
+    private String id;
+    private MapboxMap map;
 
     {
         try {
@@ -59,22 +66,14 @@ public class MainActivity extends AppCompatActivity {
         mapView.getMapAsync(new OnMapReadyCallback() {
             @Override
             public void onMapReady(MapboxMap mapboxMap) {
+                map = mapboxMap;
 //                mapboxMap.setStyleUrl(Style.DARK);
                 currentBestLocation = getLastBestLocation();
                 if (currentBestLocation != null) {
                     LatLng currLatLng = new LatLng(currentBestLocation.getLatitude(), currentBestLocation.getLongitude());
-                    mapboxMap.addMarker(new MarkerOptions()
-                            .position(currLatLng)
-                            .title("MY CURRENT LOCATION")
-                            .snippet("WELCOME TO MY MARKER"));
+                    drawMarker(currLatLng, "Me!", "This is my location");
 
-                    CameraPosition position = new CameraPosition.Builder()
-                            .target(currLatLng)
-                            .zoom(19)
-                            .bearing(180)
-                            .tilt(30)
-                            .build();
-                    mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(position), 2000);
+                    animateMeTo(currLatLng);
                 } else {
                     Debug("currentBestLocation null");
                 }
@@ -84,16 +83,79 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupSocketIO() {
         mSocket.on("connection", Connected);
+        currentBestLocation = getLastBestLocation();
+        if(currentBestLocation != null) {
+            mSocket.emit("storeLocation", getEncodedLocation());
+        }
+        mSocket.on("setId", setId);
+        mSocket.on("newUser", showNewUser);
+        mSocket.on("setMarker", setMarker);
         mSocket.connect();
     }
 
     private Emitter.Listener Connected = new Emitter.Listener() {
         @Override
         public void call(Object... args) {
-            Log.d("SOCKET.IO", "CONNECTED");
-            Debug("CONNECTED");
+
         }
     };
+
+    private Emitter.Listener setId = new Emitter.Listener() {
+        @Override
+        public void call(Object... args) {
+            id = (String) args[0];
+        }
+    };
+
+    private Emitter.Listener showNewUser = new Emitter.Listener() {
+        @Override
+        public void call(Object... args) {
+            try {
+                Person newPerson = new Person((JSONObject)args[0]);
+                drawMarker(newPerson.getLocation(), newPerson.getId(), "");
+                Debug("Showing new user");
+                animateMeTo(newPerson.getLocation());
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+    };
+
+    private Emitter.Listener setMarker = new Emitter.Listener() {
+        @Override
+        public void call(Object... args) {
+            LatLng markerLatLng = getDecodedLocation((String)args[0]);
+            drawMarker(markerLatLng, id, "");
+        }
+    };
+
+    private String getEncodedLocation() {
+        currentBestLocation = getLastBestLocation();
+        return currentBestLocation.getLatitude() + ":" + currentBestLocation.getLongitude();
+    }
+
+    private LatLng getDecodedLocation(String location) {
+        String[] markerLocation = location.split(":");
+        return new LatLng(Double.parseDouble(markerLocation[0]), Double.parseDouble(markerLocation[1]));
+
+    }
+
+    private void drawMarker(LatLng markerLatLng, String title, String snippet) {
+        map.addMarker(new MarkerOptions()
+        .position(markerLatLng)
+        .title(title)
+        .snippet(snippet));
+    }
+
+    private void animateMeTo(LatLng animateToLocation) {
+        CameraPosition position = new CameraPosition.Builder()
+                .target(animateToLocation)
+                .zoom(19)
+                .bearing(180)
+                .tilt(30)
+                .build();
+        map.animateCamera(CameraUpdateFactory.newCameraPosition(position), 2000);
+    }
 
     private Location getLastBestLocation() {
         LocationManager locationManager = (LocationManager)
@@ -123,8 +185,17 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void Debug(String msg) {
-        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+    private void Debug(final String msg) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    public String getId() {
+        return id;
     }
 
 
